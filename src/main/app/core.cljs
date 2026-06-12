@@ -1,4 +1,5 @@
-(ns app.core)
+(ns app.core
+  (:require [reagent.dom :as dom]))
 
 (defn ^:async extract-structured-data
   [^js pdfjs pdf-data]
@@ -31,8 +32,16 @@
           #(js/console.log %))
    #(js/console.error %))
   )
+
+(defn page
+  []
+  [:p "Log in the developer console for the metadata (press " [:kbd "F12"] ")."])
   
-(defn init []
+(defn ^:dev/after-load start
+  []
+  (dom/render [page] (.getElementById js/document "app")))
+
+(defn ^:export init []
   (if-not js/Worker
     (js/console.error "Web Workers not supported.")
     (do
@@ -41,4 +50,5 @@
       (.catch
        (.then (extract-structured-data (.-pdfjsLib js/globalThis) pdf-data)
               #(js/console.log %))
-       #(js/console.error %)))))
+       #(js/console.error %))))
+  (start))
