@@ -1,14 +1,16 @@
 (ns app.core
-  (:require [reagent.dom :as dom]))
+  (:require [reagent.core :as r]
+            [reagent.dom :as dom]))
 
 (defn ^:async extract-structured-data
   [^js pdfjs pdf-data]
   (let [^js pdf      (await (.-promise (.getDocument pdfjs #js {:data pdf-data})))
         ^js metadata (await (.getMetadata pdf))]
-    #js {:title   (.-Title (.-info metadata))
-         :author  (.-Author (.-info metadata))
-         :subject (.-Subject (.-info metadata))
-         :pages   (.-numPages pdf)}))
+    {:title   (.-Title (.-info metadata))
+     :author  (.-Author (.-info metadata))
+     :subject (.-Subject (.-info metadata))
+     :custom (js->clj (.-Custom (.-info metadata))) ; XMP metadata
+     :pages   (.-numPages pdf)}))
 
 (def pdf-data
   (js/atob (str
@@ -40,6 +42,36 @@
     (set! (.-onload file-reader) #(process-fn (-> % .-target .-result js/Uint8Array.)))
     (.readAsArrayBuffer file-reader file)))
 
+(defonce pdf-metadata
+  (r/atom {}))
+
+(defn description-list-elements
+  [elements]
+  [:div {:class "border-t border-gray-100 dark:border-white/5"}
+   [:dl {:class "divide-y divide-gray-100 dark:divide-white/5"}
+    (for [[k v] elements]
+      ^{:key k}
+      [:div
+       {:class "px-4 py-6 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6"}
+       [:dt {:class "text-sm font-medium text-gray-900 dark:text-gray-100"} k]
+       [:dd {:class (str "mt-1 text-sm/6 sm:col-span-2 sm:mt-0"
+                         (if v
+                           " text-gray-700 dark:text-gray-300"
+                           " text-gray-400 dark:text-gray-500"))}
+        (or v "-")]])]])
+
+(defn description-list
+  "https://tailwindcss.com/plus/ui-blocks/application-ui/data-display/description-lists"
+  [list-heading list-description list-elements]
+  [:div
+   {:class "overflow-hidden bg-white shadow-sm sm:rounded-lg dark:bg-gray-800/50 dark:shadow-none dark:inset-ring dark:inset-ring-white/10"}
+   [:div {:class "px-4 py-6 sm:px-6"}
+    [:h3 {:class "text-base/7 font-semibold text-gray-900 dark:text-white"}
+     list-heading]
+    [:p {:class "mt-1 max-w-2xl text-sm/6 text-gray-500 dark:text-gray-300"}
+     list-description]]
+   [description-list-elements list-elements]])
+
 ; https://readymadeui.com/tailwind/component/file-upload-container
 (defn file-upload
   [file-selected-fn]
@@ -61,14 +93,32 @@
    [:p {:class "text-xs font-normal text-slate-400 text-center mt-2"}
     "PNG, JPG SVG, WEBP, and GIF are Allowed."]])
 
+(defn on-upload
+  [file]
+  (read-file-using file (fn [file-data]
+                          (.catch
+                           (.then (extract-structured-data (.-pdfjsLib js/globalThis) file-data)
+                                  #(reset! pdf-metadata %))
+                           #(js/console.error %)))))
+
+(defn page
+  []
+  (let [metadata @pdf-metadata]
+    [:div
+     {:class "mx-auto max-w-7xl py-12 sm:px-6 lg:px-8"}
+     [file-upload on-upload]
+     [description-list
+      "Basic information"
+      "Core properties and metadata for the document."
+      (-> metadata (dissoc :custom) (update-keys name))]
+     [description-list
+      "Custom metadata"
+      "Additional metadata, also known as XMP metadata, usually only exists for specific documents and producers."
+      (:custom metadata)]]))
+
 (defn ^:dev/after-load start
   []
-  (dom/render [file-upload (fn [file]
-                             (read-file-using file (fn [file-data]
-                                                     (.catch
-                                                      (.then (extract-structured-data (.-pdfjsLib js/globalThis) file-data)
-                                                             #(js/console.log %))
-                                                      #(js/console.error %)))))]
+  (dom/render [page]
               (.getElementById js/document "app")))
 
 (defn ^:export init []
