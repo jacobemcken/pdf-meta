@@ -11,6 +11,9 @@
     "dev": "run-p -l app:watch tailwindcss:watch",
     "release": "run-s app:release tailwindcss:build"
   },
+  "engines":{
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.0",
     "react": "^17.0.2",
